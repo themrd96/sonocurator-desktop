@@ -1,0 +1,66 @@
+{
+  "name": "sonocurator",
+  "productName": "SonoCurator",
+  "version": "2.0.0",
+  "description": "AI Music Curation & Evaluation Desktop App",
+  "main": "electron-main.cjs",
+  "author": "DarkBluesYT",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "postinstall": "electron-builder install-app-deps",
+    "build": "electron-builder --win",
+    "build:portable": "electron-builder --win portable",
+    "build:installer": "electron-builder --win nsis"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.7.0"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.darkbluesyt.sonocurator",
+    "productName": "SonoCurator",
+    "copyright": "Copyright © 2026 DarkBluesYT",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "electron-main.cjs",
+      "!node_modules/better-sqlite3/deps/**",
+      "!node_modules/better-sqlite3/src/**"
+    ],
+    "extraResources": [
+      {
+        "from": "server-bundle",
+        "to": "server-bundle"
+      }
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/better-sqlite3/**"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
+      "artifactName": "SonoCurator-${version}-Portable.${ext}"
+    },
+    "portable": {
+      "unicode": false,
+      "artifactName": "SonoCurator-${version}-Portable.${ext}"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false,
+      "deleteAppDataOnUninstall": false,
+      "artifactName": "SonoCurator-${version}-Setup.${ext}"
+    }
+  }
+}

@@ -1,0 +1,80 @@
+name: Build Windows .exe
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Rebuild native modules for Electron
+        run: npx electron-builder install-app-deps
+
+      - name: Build portable .exe
+        run: npx electron-builder --win portable
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build installer .exe
+        run: npx electron-builder --win nsis
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Portable .exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: SonoCurator-Portable
+          path: release/*.exe
+          if-no-files-found: error
+
+      - name: Upload Installer .exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: SonoCurator-Installer
+          path: release/*Setup*.exe
+          if-no-files-found: warn
+
+      - name: Create Release
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ github.run_number }}
+          name: SonoCurator v2.0.${{ github.run_number }}
+          body: |
+            ## SonoCurator Desktop App
+            
+            Download **SonoCurator-2.0.0-Portable.exe** below — just double-click to run, no installation needed.
+            
+            Or download the **Setup.exe** for a proper Windows installer with Start Menu shortcut.
+            
+            ### What's included
+            - AI music analysis engine (rhythm, tonal, spectral, genre, artifacts, structure)
+            - Vocal detection (solo, chorus, backing, harmony, lead+backing)
+            - Waveform visualization and playback
+            - A/B track comparison
+            - Bulk upload and batch processing
+            - Filtering, tagging, scoring, approval workflow
+            
+            ### Requirements
+            - Windows 10/11 (64-bit)
+            - ffmpeg (optional, for MP3/FLAC/OGG/M4A support — WAV works without it)
+          files: release/*.exe
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
