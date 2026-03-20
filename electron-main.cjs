@@ -40,6 +40,33 @@ function isPortFree(port) {
 }
 
 // ── ffmpeg detection ──────────────────────────────────────────────────────────
+function getFullWindowsPath() {
+  // Electron portable .exe may not inherit the full user PATH.
+  // Read the real PATH from the Windows registry to get what the user actually has.
+  if (process.platform !== "win32") return process.env.PATH || "";
+
+  let fullPath = process.env.PATH || "";
+  try {
+    // Read system PATH
+    const sysPath = execSync(
+      'reg query "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment" /v Path',
+      { encoding: "utf-8", timeout: 5000, windowsHide: true }
+    );
+    const sysMatch = sysPath.match(/REG_(?:EXPAND_)?SZ\s+(.+)/i);
+    if (sysMatch) fullPath += ";" + sysMatch[1].trim();
+  } catch {}
+  try {
+    // Read user PATH
+    const userPath = execSync(
+      'reg query "HKCU\\Environment" /v Path',
+      { encoding: "utf-8", timeout: 5000, windowsHide: true }
+    );
+    const userMatch = userPath.match(/REG_(?:EXPAND_)?SZ\s+(.+)/i);
+    if (userMatch) fullPath += ";" + userMatch[1].trim();
+  } catch {}
+  return fullPath;
+}
+
 function findFfmpeg() {
   // Bundled ffmpeg
   const bundled = isPackaged
@@ -47,26 +74,88 @@ function findFfmpeg() {
     : null;
   if (bundled && fs.existsSync(bundled)) return bundled;
 
-  // System PATH
+  // System PATH via "where" (works if PATH is inherited correctly)
   try {
     const cmd = process.platform === "win32" ? "where ffmpeg" : "which ffmpeg";
-    const result = execSync(cmd, { encoding: "utf-8", timeout: 5000 });
+    const result = execSync(cmd, { encoding: "utf-8", timeout: 5000, windowsHide: true });
     if (result.trim()) return result.trim().split(/\r?\n/)[0].trim();
   } catch {}
+
+  // On Windows, manually search the registry PATH (handles stale PATH in Electron portable)
+  if (process.platform === "win32") {
+    const fullPath = getFullWindowsPath();
+    const dirs = fullPath.split(";").filter(Boolean);
+    for (const dir of dirs) {
+      // Expand %VARS% in path entries
+      const expanded = dir.replace(/%([^%]+)%/g, (_, key) => process.env[key] || "");
+      const candidate = path.join(expanded, "ffmpeg.exe");
+      try {
+        if (fs.existsSync(candidate)) return candidate;
+      } catch {}
+    }
+  }
 
   // Common Windows locations
   if (process.platform === "win32") {
     const common = [
       "C:\\ffmpeg\\bin\\ffmpeg.exe",
+      "C:\\ffmpeg\\ffmpeg.exe",
       "C:\\Program Files\\ffmpeg\\bin\\ffmpeg.exe",
+      "C:\\Program Files\\ffmpeg\\ffmpeg.exe",
+      "C:\\Program Files (x86)\\ffmpeg\\bin\\ffmpeg.exe",
       "C:\\tools\\ffmpeg\\bin\\ffmpeg.exe",
+      "C:\\tools\\ffmpeg\\ffmpeg.exe",
       path.join(os.homedir(), "ffmpeg", "bin", "ffmpeg.exe"),
+      path.join(os.homedir(), "ffmpeg", "ffmpeg.exe"),
+      path.join(os.homedir(), "Desktop", "ffmpeg", "bin", "ffmpeg.exe"),
+      path.join(os.homedir(), "Downloads", "ffmpeg", "bin", "ffmpeg.exe"),
+      path.join(os.homedir(), "Downloads", "ffmpeg-master-latest-win64-gpl", "bin", "ffmpeg.exe"),
+      path.join(os.homedir(), "Downloads", "ffmpeg-master-latest-win64-lgpl", "bin", "ffmpeg.exe"),
+      path.join(process.env.LOCALAPPDATA || "", "Microsoft", "WinGet", "Packages"),
+      // scoop
+      path.join(os.homedir(), "scoop", "shims", "ffmpeg.exe"),
+      // chocolatey
+      "C:\\ProgramData\\chocolatey\\bin\\ffmpeg.exe",
     ];
     for (const p of common) {
-      if (fs.existsSync(p)) return p;
+      try {
+        if (fs.existsSync(p)) return p;
+      } catch {}
     }
+
+    // Search WinGet packages folder for ffmpeg
+    try {
+      const wingetDir = path.join(process.env.LOCALAPPDATA || "", "Microsoft", "WinGet", "Packages");
+      if (fs.existsSync(wingetDir)) {
+        const packages = fs.readdirSync(wingetDir);
+        for (const pkg of packages) {
+          if (pkg.toLowerCase().includes("ffmpeg")) {
+            // Recursively look for ffmpeg.exe inside this package
+            const pkgDir = path.join(wingetDir, pkg);
+            const found = findFileRecursive(pkgDir, "ffmpeg.exe", 3);
+            if (found) return found;
+          }
+        }
+      }
+    } catch {}
   }
 
+  return null;
+}
+
+function findFileRecursive(dir, filename, maxDepth) {
+  if (maxDepth <= 0) return null;
+  try {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      if (entry.isFile() && entry.name.toLowerCase() === filename.toLowerCase()) return full;
+      if (entry.isDirectory()) {
+        const found = findFileRecursive(full, filename, maxDepth - 1);
+        if (found) return found;
+      }
+    }
+  } catch {}
   return null;
 }
 
