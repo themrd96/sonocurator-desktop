@@ -184,11 +184,15 @@ function startServer() {
       env.FFMPEG_PATH = ffmpegPath;
     }
 
-    // Point NODE_PATH to our node_modules so the server can find better-sqlite3
-    const appRoot = isPackaged
-      ? path.join(process.resourcesPath, "app.asar.unpacked")
-      : __dirname;
-    const nodeModulesPath = path.join(appRoot, "node_modules");
+    // Point NODE_PATH to our node_modules so the server can find better-sqlite3 and its deps.
+    // Include both the asar-unpacked path (for native modules) and the asar path (for pure JS modules).
+    const unpackedModules = isPackaged
+      ? path.join(process.resourcesPath, "app.asar.unpacked", "node_modules")
+      : path.join(__dirname, "node_modules");
+    const asarModules = isPackaged
+      ? path.join(process.resourcesPath, "app.asar", "node_modules")
+      : path.join(__dirname, "node_modules");
+    const nodeModulesPath = unpackedModules + (isPackaged ? path.delimiter + asarModules : "");
     env.NODE_PATH = nodeModulesPath;
 
     console.log("[electron] Starting server at:", serverEntry);
