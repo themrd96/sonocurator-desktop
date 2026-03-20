@@ -4,6 +4,12 @@ const { spawn, execSync } = require("child_process");
 const fs = require("fs");
 const net = require("net");
 const os = require("os");
+// ── Single instance lock ─────────────────────────────────────────────────────
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  // Another instance is already running — quit immediately
+  app.quit();
+}
 
 // ── Paths ─────────────────────────────────────────────────────────────────────
 const isPackaged = app.isPackaged;
@@ -191,6 +197,12 @@ function startServer() {
     console.log("[electron] ffmpeg:", ffmpegPath || "NOT FOUND");
     console.log("[electron] NODE_PATH:", nodeModulesPath);
 
+    // Run the server as a child process using Electron's own Node.js runtime.
+    // CRITICAL: We must set ELECTRON_RUN_AS_NODE=1 so that process.execPath
+    // (which is the Electron .exe) behaves as plain Node.js instead of
+    // launching another Electron GUI window (which would cause infinite instances).
+    env.ELECTRON_RUN_AS_NODE = "1";
+
     serverProcess = spawn(process.execPath, [serverEntry], {
       env,
       cwd: serverDir,
@@ -311,6 +323,14 @@ function createSplash() {
 }
 
 // ── App lifecycle ─────────────────────────────────────────────────────────────
+app.on("second-instance", () => {
+  // Someone tried to launch a second instance — focus our existing window
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+  }
+});
+
 app.whenReady().then(async () => {
   const splash = createSplash();
 
